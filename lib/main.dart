@@ -75,6 +75,7 @@ class _MyHomePageState extends State<MyHomePage> {
               .select('id')
               .eq('user_email', email)
               .or('status.eq.available,status.eq.pending_booking')
+              .limit(1)
               .maybeSingle();
 
           if (activeOrPendingTicketResponse != null) {
