@@ -55,9 +55,10 @@ class _MyHomePageState extends State<MyHomePage> {
       final receiptNumber = int.parse(_receiptController.text);
 
       try {
+        // 1. Get user by email
         final userResponse = await Supabase.instance.client
             .from('users')
-            .select()
+            .select('id')
             .eq('email_address', email)
             .maybeSingle();
 
@@ -66,27 +67,29 @@ class _MyHomePageState extends State<MyHomePage> {
             _errorText = 'User not found';
           });
         } else {
-          // Add a check to ensure the user does not have an active unused ticket
-          final activeTicketResponse = await Supabase.instance.client
-              .from('tickets')
-              .select()
-              .eq('email', email)
-              .eq('used', false)
+          final userId = userResponse['id'];
+
+          // 2. Check if user already has an available or pending ticket
+          final activeOrPendingTicketResponse = await Supabase.instance.client
+              .from('user_tickets')
+              .select('id')
+              .eq('user_email', email)
+              .or('status.eq.available,status.eq.pending_booking')
               .maybeSingle();
 
-          if (activeTicketResponse != null) {
+          if (activeOrPendingTicketResponse != null) {
             setState(() {
-              _errorText = 'User already has an active unused ticket';
+              _errorText = 'User already has an available or pending ticket';
             });
             setState(() { _isLoading = false; });
             return;
           }
 
-          // Add a check to ensure the ticket number is unique
+          // 3. Check if the ticket_code (receipt number) is unique
           final existingTicketResponse = await Supabase.instance.client
-              .from('tickets')
-              .select()
-              .eq('receipt_number', receiptNumber)
+              .from('user_tickets')
+              .select('id')
+              .eq('ticket_code', receiptNumber.toString())
               .maybeSingle();
 
           if (existingTicketResponse != null) {
@@ -97,13 +100,14 @@ class _MyHomePageState extends State<MyHomePage> {
             return;
           }
 
-          // Update the ticket insertion logic to handle success correctly
+          // 4. Insert new ticket into user_tickets (remove created_at, ensure user_id is string)
           final ticketResponse = await Supabase.instance.client
-              .from('tickets')
+              .from('user_tickets')
               .insert({
-                'email': email,
-                'receipt_number': receiptNumber,
-                'used': false,
+                'user_id': userId.toString(),
+                'user_email': email,
+                'ticket_code': receiptNumber.toString(),
+                'status': 'available',
               })
               .select();
 
@@ -121,7 +125,8 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       } catch (e) {
         setState(() {
-          _errorText = 'An error occurred. Please try again.';
+          _errorText = 'An error occurred: '
+              + e.toString();
         });
       } finally {
         setState(() { _isLoading = false; });
